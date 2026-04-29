@@ -1,9 +1,3 @@
-openai
 scikit-learn
-mlflow
-langchain
-pydantic
-pyyaml
-fastapi
-prefect
-pytest
+numpy
+anthropic
