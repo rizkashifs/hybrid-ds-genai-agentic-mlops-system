@@ -1,0 +1,11 @@
+project:
+  name: hybrid-ds-genai-agentic-mlops-system
+ml:
+  registry: model-registry-placeholder
+llm:
+  provider: openai
+  model: placeholder
+agents:
+  planner_enabled: true
+automation:
+  human_approval_required: true
