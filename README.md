@@ -10,6 +10,8 @@ A working demonstration of how ML, LLMs, and agents combine into a single unifie
 
 Most teams build either an ML pipeline **or** an LLM app. This repo shows what it looks like when they work together, with agents connecting the two and automating the operations layer.
 
+This repository explores how agentic systems can automate the machine learning lifecycle, moving beyond static pipelines to adaptive, self-improving systems.
+
 ```
 User / System Trigger
         ↓
@@ -58,6 +60,11 @@ The monitoring logic lives in `src/monitoring/drift.py` — a simple mean-shift 
 ---
 
 ## Agent Responsibilities
+
+- **Orchestrator Agent** → decides ML vs LLM vs hybrid
+- **Retraining Agent** → triggers retraining based on signals
+- **Evaluation Agent** → compares and selects models
+- **Debug Agent** → analyzes failures and suggests fixes
 
 ### `OrchestratorAgent` — `src/agents/orchestrator.py`
 
