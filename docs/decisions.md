@@ -49,3 +49,33 @@
 **Why:** It is fast, interpretable, and sufficient to demonstrate the pattern. A team can read the number and immediately understand what it measures.
 
 **Tradeoff:** Not statistically rigorous. For production use, replace with PSI, KS-test, or a proper drift library. The function signature stays the same — only the implementation needs to change.
+
+---
+
+## ADR-006: All tuneable values live in a single config.yaml, read once at startup
+
+**Decision:** `src/core/__init__.py` exposes `load_config()` which reads `configs/config.yaml` with `yaml.safe_load` and returns a plain dict. All modules accept `cfg: dict` as a parameter; none hardcode paths, thresholds, model names, or prompt text.
+
+**Why:** A template must be adaptable without code changes. Centralising configuration means a team can clone the repo, edit one file, and have a system tuned to their domain — different model path, different LLM prompt, different label names, different drift threshold.
+
+**Tradeoff:** No hot-reload; a config change requires a process restart. No schema validation at load time — an invalid key silently returns `None` rather than failing fast. Both are acceptable for a template; add `pydantic-settings` or `jsonschema` validation if the project grows.
+
+---
+
+## ADR-007: LLM prompt text and label names are config, not code
+
+**Decision:** The LLM system prompt (`llm.system_prompt`), class label names (`llm.label_names`), and feature names (`llm.feature_names`) are all in `config.yaml`. The `explain()` function reads them at call time and constructs the user message dynamically.
+
+**Why:** The original implementation hardcoded "customer", "convert/no convert", and "age_norm, spend_norm, visits_norm, recency_norm" directly in the source. This made the LLM layer domain-specific and required code edits to reuse the template for any other problem (churn, fraud, risk scoring, etc.).
+
+**Tradeoff:** Prompt engineering happens in YAML rather than Python, which is less flexible for complex multi-turn prompts. If a use case needs structured LLM output or tool use, the `explain()` function should be extended — the config-driven approach remains for the common case.
+
+---
+
+## ADR-008: Missing retrain_fn raises RuntimeError instead of silently doing nothing
+
+**Decision:** If `RetrainingAgent.check_and_act()` detects drift but `retrain_fn` is `None`, it raises `RuntimeError` by default. A `warn_only=True` constructor flag restores the silent behaviour for callers who genuinely want drift detection without triggering retraining.
+
+**Why:** Silent failures in a retraining pipeline are dangerous. Drift is detected, nothing happens, and the model silently degrades. Making the failure loud forces the caller to make an explicit choice.
+
+**Tradeoff:** Callers who use `check_and_act` purely for monitoring must now pass `warn_only=True`. This is a small, explicit cost for a significant safety improvement.

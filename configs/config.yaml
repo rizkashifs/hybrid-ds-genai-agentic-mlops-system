@@ -1,11 +1,36 @@
 project:
   name: hybrid-ds-genai-agentic-mlops-system
+
 ml:
-  registry: model-registry-placeholder
+  # Path where the trained model artifact is saved and loaded from
+  model_path: model.pkl
+  # Synthetic training data shape — replace with your real data loader
+  n_samples: 500
+  n_features: 4
+
 llm:
-  provider: openai
-  model: placeholder
+  model: claude-sonnet-4-6
+  max_tokens: 150
+  # Generic system prompt — edit this for your domain without touching code
+  system_prompt: >
+    You are a concise ML model explainer.
+    Given feature values and a prediction, explain in 2 sentences
+    why the model likely made that prediction.
+  # Human-readable names for each class label (key = str of int label)
+  # Example for churn: {"0": "retain", "1": "churn"}
+  # Example for fraud: {"0": "legitimate", "1": "fraudulent"}
+  label_names:
+    "0": "negative"
+    "1": "positive"
+  # Optional: name each feature position. Leave empty [] to use feature_0, feature_1, ...
+  # Example: ["age", "spend", "visits", "recency"]
+  feature_names: []
+
+monitoring:
+  # Drift score (mean absolute feature-mean shift) above this triggers retraining
+  drift_threshold: 0.1
+
 agents:
-  planner_enabled: true
-automation:
-  human_approval_required: true
+  # Confidence below this threshold causes the orchestrator to call the LLM for explanation
+  # At or above this threshold the ML prediction is considered self-evident
+  explain_confidence_threshold: 0.85

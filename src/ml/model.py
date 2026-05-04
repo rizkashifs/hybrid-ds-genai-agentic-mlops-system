@@ -1,13 +1,25 @@
 import pickle
 import numpy as np
+from pathlib import Path
 from sklearn.linear_model import LogisticRegression
 from sklearn.datasets import make_classification
 
-MODEL_PATH = "model.pkl"
+from src.core import load_config
 
 
-def train(save_path=MODEL_PATH) -> LogisticRegression:
-    X, y = make_classification(n_samples=500, n_features=4, n_informative=2, n_redundant=1, random_state=42)
+def train(cfg: dict = None) -> LogisticRegression:
+    if cfg is None:
+        cfg = load_config()
+    n_features = cfg["ml"]["n_features"]
+    save_path = cfg["ml"]["model_path"]
+
+    X, y = make_classification(
+        n_samples=cfg["ml"]["n_samples"],
+        n_features=n_features,
+        n_informative=max(2, n_features - 2),
+        n_redundant=1,
+        random_state=42,
+    )
     model = LogisticRegression()
     model.fit(X, y)
     with open(save_path, "wb") as f:
@@ -15,8 +27,10 @@ def train(save_path=MODEL_PATH) -> LogisticRegression:
     return model
 
 
-def load(path=MODEL_PATH) -> LogisticRegression:
-    with open(path, "rb") as f:
+def load(cfg: dict = None) -> LogisticRegression:
+    if cfg is None:
+        cfg = load_config()
+    with open(cfg["ml"]["model_path"], "rb") as f:
         return pickle.load(f)
 
 

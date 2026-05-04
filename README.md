@@ -25,13 +25,13 @@ User / System Trigger
 ## Layers
 
 ### 1. ML Layer — `src/ml/model.py`
-A `LogisticRegression` model trained on synthetic customer data. Returns a structured prediction:
+A `LogisticRegression` model trained on your data. Returns a structured prediction:
 ```python
 {"label": 1, "probability": 0.93, "features": [0.5, -1.2, 0.8, 1.1]}
 ```
 
 ### 2. LLM Layer — `src/llm/reasoner.py`
-Takes the ML prediction and asks Claude to explain it in plain English. Uses prompt caching so repeated calls are cheap.
+Takes the ML prediction and asks Claude to explain it in plain English. The system prompt, label names, and feature names are all configured in `config.yaml` — no code changes needed to adapt this to a new domain. Uses prompt caching so repeated calls are cheap.
 
 ### 3. Agent Layer — `src/agents/`
 
@@ -67,12 +67,12 @@ Without an API key the system still runs — the LLM step returns a clearly labe
 
 ```
 === Step 1: Train ML model ===
-Trained LogisticRegression → saved to model.pkl
+Trained model → saved to model.pkl
 
 === Step 2: Predict + Explain (OrchestratorAgent) ===
-Customer features : [0.5, -1.2, 0.8, 1.1]
-ML prediction     : Convert (93% confidence)
-LLM explanation   : [Mock LLM] Predicted 'convert' with 93% confidence.
+Features          : [0.5, -1.2, 0.8, 1.1]
+ML prediction     : positive (93% confidence)
+LLM explanation   : [Mock LLM] Predicted 'positive' with 93% confidence.
                     Set ANTHROPIC_API_KEY to get a real explanation from Claude.
 
 === Step 3: Drift detection → RetrainingAgent ===
@@ -80,6 +80,8 @@ Drift score   : 0.621
 Drift detected: True
 Action taken  : retraining_triggered
 ```
+
+Label names (`positive`/`negative`) and feature names are set in `config.yaml`.
 
 ---
 
@@ -118,6 +120,22 @@ hybrid-ds-genai-agentic-mlops-system/
 
 ---
 
+## Configuration
+
+All tuneable values live in `configs/config.yaml`. To adapt this template to a new domain, only the config needs to change:
+
+| Key | What it controls |
+|---|---|
+| `ml.model_path` | Where the trained model artifact is saved |
+| `ml.n_features` | Number of input features |
+| `llm.system_prompt` | The instruction sent to the LLM — make it domain-specific here |
+| `llm.label_names` | Human-readable names for each class (e.g. `"1": "churn"`) |
+| `llm.feature_names` | Names for each feature position (e.g. `["age", "spend"]`); leave `[]` to use `feature_0`, `feature_1`, ... |
+| `monitoring.drift_threshold` | Drift score above which retraining fires |
+| `agents.explain_confidence_threshold` | Confidence below which the LLM is called |
+
+---
+
 ## Dependencies
 
 | Package | Purpose |
@@ -125,3 +143,4 @@ hybrid-ds-genai-agentic-mlops-system/
 | `scikit-learn` | ML model training and prediction |
 | `numpy` | Feature arrays and drift computation |
 | `anthropic` | Claude API for LLM reasoning |
+| `pyyaml` | Config loading |
