@@ -28,9 +28,9 @@ class RetrainingAgent:
                     f"Drift detected (score={drift_score:.3f} > threshold={self.drift_threshold}) "
                     f"but no retrain_fn was supplied. Pass a retrain_fn or set warn_only=True."
                 )
-            action = "retraining_triggered"
-            log.info("agent.retraining.triggered", extra={"drift_score": round(drift_score, 4)})
             if retrain_fn:
+                action = "retraining_triggered"
+                log.info("agent.retraining.triggered", extra={"drift_score": round(drift_score, 4)})
                 retrain_fn()
 
         return {"drift_score": drift_score, "drifted": drifted, "action": action}

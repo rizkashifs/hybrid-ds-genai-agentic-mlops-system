@@ -63,3 +63,15 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+
+---
+
+## 5. Testing Standards (Project-Specific)
+
+**Every public function must have a test before a PR is merged.**
+
+- Run tests with: `python3 -m pytest tests/ -v`
+- Tests must not touch the network or write outside `pytest`'s `tmp_path`
+- Mock the LLM layer (`src.llm.reasoner.explain`) in any test that exercises the orchestrator
+- Use inline config dicts in tests — do not import `load_config()` unless testing config itself
+- No test should rely on the real `model.pkl` artifact; always pass a `tmp_path`-based cfg

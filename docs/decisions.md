@@ -89,3 +89,21 @@
 **Why:** A template must be portable. Tying it to a specific logging library or vendor SDK forces every team that uses it to adopt that dependency. Stdlib `logging` is available everywhere, and the JSON lines it produces can be piped into any sink — Datadog, CloudWatch, Loki, a local file — without changing application code.
 
 **Tradeoff:** No built-in log aggregation, sampling, or async flushing. For high-throughput production services, add a `QueueHandler` or replace with `structlog`. The formatter and `get_logger()` factory in `src/core/__init__.py` are the only two places that need to change.
+
+---
+
+## ADR-010: Tests use pytest with stdlib mocks; no fixtures library
+
+**Decision:** All tests use `pytest` with `unittest.mock.patch` for mocking. No `pytest-mock`, `factory_boy`, or shared fixtures file. Each test file defines its own minimal config dict and helper functions inline.
+
+**Why:** Template tests exist to document contracts, not to exercise infrastructure. Keeping them dependency-light means a team forking this repo does not inherit a test setup they don't understand. Any test file is readable top-to-bottom with no hidden context.
+
+**Tradeoff:** Some duplication across test files (each defines its own `_cfg()` helper). This is intentional — coupling test helpers together creates invisible dependencies and makes individual tests harder to read in isolation.
+
+---
+
+## ADR-011: warn_only=True produces action=None, not action="retraining_triggered"
+
+**Decision:** `RetrainingAgent` only sets `action = "retraining_triggered"` when a `retrain_fn` is actually called. In `warn_only` mode with no callback, drift is detected but `action` remains `None`.
+
+**Why:** The `action` field communicates what the system *did*, not what it *could have done*. Returning `"retraining_triggered"` when nothing was triggered is misleading and could cause downstream consumers to incorrectly assume retraining ran. This was a bug caught by the test suite (Phase 3).

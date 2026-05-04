@@ -63,6 +63,24 @@ Without an API key the system still runs — the LLM step returns a clearly labe
 
 ---
 
+## Tests
+
+```bash
+python3 -m pytest tests/ -v
+```
+
+19 tests covering every public function across all layers. No test touches the network or writes outside `pytest`'s `tmp_path`.
+
+| File | What it covers |
+|---|---|
+| `tests/test_config.py` | Config loads, required keys present, missing file raises |
+| `tests/test_model.py` | Train/load round-trip, prediction structure, wrong feature count |
+| `tests/test_drift.py` | Zero drift, non-zero drift, known-value arithmetic |
+| `tests/test_retraining_agent.py` | No drift, drift + callback, drift + no callback raises, warn_only |
+| `tests/test_orchestrator.py` | explain on/off, prediction structure, LLM is mocked |
+
+---
+
 ## Logging
 
 Every layer emits structured JSON logs to **stderr**. The demo `print()` output goes to **stdout**, so they never mix.
