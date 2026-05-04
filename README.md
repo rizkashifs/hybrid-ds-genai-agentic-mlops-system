@@ -1,100 +1,253 @@
-# hybrid-ds-genai-agentic-mlops-system
+# Hybrid DS + GenAI + Agentic MLOps System
 
-An advanced enterprise architecture blueprint combining predictive ML, LLM reasoning, agent orchestration, and automated MLOps workflows.
+[![CI](https://github.com/rizkashifs/hybrid-ds-genai-agentic-mlops-system/actions/workflows/ci.yml/badge.svg)](https://github.com/rizkashifs/hybrid-ds-genai-agentic-mlops-system/actions/workflows/ci.yml)
 
-## Description
+A working demonstration of how ML, LLMs, and agents combine into a single unified system — not three separate tools.
 
-Modern AI systems increasingly combine classical machine learning, retrieval-augmented LLM reasoning, and agentic workflow automation. For example, a financial risk platform might use ML models to score transaction risk, LLMs to explain evidence, and agents to coordinate reviews, monitoring checks, and retraining workflows.
+---
 
-This repository defines a conceptual system architecture for that hybrid pattern. It intentionally avoids implementation code and focuses on boundaries, governance, and lifecycle design.
+## The Idea
+
+Most teams build either an ML pipeline **or** an LLM app. This repo shows what it looks like when they work together, with agents connecting the two and automating the operations layer.
+
+```
+User / System Trigger
+        ↓
+  OrchestratorAgent
+   ├── ML Model       →  prediction + confidence score
+   └── LLM (conditional)
+        ├── confidence < threshold  →  call LLM  (uncertain, explain)
+        └── confidence ≥ threshold  →  skip LLM  (confident, no cost)
+        ↓
+  Combined Output  {prediction, routing, explanation?}
+        ↓
+  RetrainingAgent  →  monitors drift → triggers retraining automatically
+```
+
+---
+
+## Layers
+
+### 1. ML Layer — `src/ml/model.py`
+A `LogisticRegression` model trained on your data. Returns a structured prediction:
+```python
+{"label": 1, "probability": 0.93, "features": [0.5, -1.2, 0.8, 1.1]}
+```
+
+### 2. LLM Layer — `src/llm/reasoner.py`
+Takes the ML prediction and asks Claude to explain it in plain English. The system prompt, label names, and feature names are all configured in `config.yaml` — no code changes needed to adapt this to a new domain. Uses prompt caching so repeated calls are cheap.
+
+### 3. Agent Layer — `src/agents/`
+
+| Agent | File | Responsibility |
+|---|---|---|
+| `OrchestratorAgent` | `orchestrator.py` | Calls ML + LLM, combines result |
+| `RetrainingAgent` | `retraining_agent.py` | Detects feature drift, fires retraining |
+
+The monitoring logic lives in `src/monitoring/drift.py` — a simple mean-shift score across features.
+
+---
+
+## Quickstart
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the demo
+python main.py
+```
+
+**With real LLM explanations (Claude API):**
+```bash
+ANTHROPIC_API_KEY=sk-... python main.py
+```
+
+Without an API key the system still runs — the LLM step returns a clearly labelled mock response.
+
+---
+
+## Tests
+
+```bash
+python3 -m pytest tests/ -v
+```
+
+19 tests covering every public function across all layers. No test touches the network or writes outside `pytest`'s `tmp_path`.
+
+| File | What it covers |
+|---|---|
+| `tests/test_config.py` | Config loads, required keys present, missing file raises |
+| `tests/test_model.py` | Train/load round-trip, prediction structure, wrong feature count |
+| `tests/test_drift.py` | Zero drift, non-zero drift, known-value arithmetic |
+| `tests/test_retraining_agent.py` | No drift, drift + callback, drift + no callback raises, warn_only |
+| `tests/test_orchestrator.py` | explain on/off, prediction structure, LLM is mocked |
+
+---
+
+## CI
+
+Every push and pull request runs two jobs via GitHub Actions (`.github/workflows/ci.yml`):
+
+| Job | Command | What it checks |
+|---|---|---|
+| `lint` | `ruff check src/ tests/` | Style, unused imports, common errors |
+| `test` | `python3 -m pytest tests/ -v` | All 24 unit tests |
+
+To run the same checks locally before pushing:
+```bash
+ruff check src/ tests/
+python3 -m pytest tests/ -v
+```
+
+---
+
+## Logging
+
+Every layer emits structured JSON logs to **stderr**. The demo `print()` output goes to **stdout**, so they never mix.
+
+```bash
+# View logs alongside demo output
+python main.py
+
+# Logs only, formatted
+python main.py 2>&1 1>/dev/null | jq .
+
+# Filter to a specific event
+python main.py 2>&1 1>/dev/null | jq 'select(.event == "agent.retraining.check")'
+
+# Raise or lower verbosity
+LOG_LEVEL=DEBUG python main.py
+```
+
+Sample log line:
+```json
+{"ts": "2026-05-04T16:37:53.952557+00:00", "level": "INFO", "logger": "src.agents.retraining_agent", "event": "agent.retraining.check", "drift_score": 0.6208, "threshold": 0.1, "drifted": true}
+```
+
+See `docs/architecture.md` for the full list of events and fields emitted by each layer.
+
+---
+
+## Serving (HTTP API)
+
+```bash
+uvicorn src.services.api:app --reload
+```
+
+The model loads once at startup. Three endpoints are available:
+
+**`GET /health`**
+```bash
+curl http://localhost:8000/health
+# {"status": "ok", "model_loaded": true}
+```
+
+**`POST /predict`**
+```bash
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"features": [0.5, -1.2, 0.8, 1.1]}'
+# {"prediction": {...}, "routing": {"explain_called": false, "reason": "confidence 0.93 >= threshold 0.85"}, "explanation": null}
+
+# Force LLM regardless of confidence:
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"features": [0.5, -1.2, 0.8, 1.1], "force_explain": true}'
+```
+
+**`POST /drift-check`**
+```bash
+curl -X POST http://localhost:8000/drift-check \
+  -H "Content-Type: application/json" \
+  -d '{"baseline": [[0,0,0,0],[0,0,0,0]], "new_data": [[1,1,1,1],[1,1,1,1]]}'
+# {"drift_score": 1.0, "drifted": true, "action": null}
+```
+
+The drift-check endpoint is monitoring-only — it reports drift but does not trigger retraining. To trigger retraining from the API, wire `retrain_fn` in a background task.
+
+> **Note:** The API has no authentication. Add auth middleware before exposing it outside a trusted network.
+
+---
+
+## Example Output
+
+```
+=== Step 1: Train ML model ===
+Trained model → saved to model.pkl
+
+=== Step 2: Predict + Explain (OrchestratorAgent) ===
+Features          : [0.5, -1.2, 0.8, 1.1]
+ML prediction     : positive (93% confidence)
+LLM explanation   : [Mock LLM] Predicted 'positive' with 93% confidence.
+                    Set ANTHROPIC_API_KEY to get a real explanation from Claude.
+
+=== Step 3: Drift detection → RetrainingAgent ===
+Drift score   : 0.621
+Drift detected: True
+Action taken  : retraining_triggered
+```
+
+Label names (`positive`/`negative`) and feature names are set in `config.yaml`.
+
+---
+
+## Project Structure
+
+```
+hybrid-ds-genai-agentic-mlops-system/
+├── main.py                        # End-to-end demo
+├── requirements.txt
+├── src/
+│   ├── ml/
+│   │   └── model.py               # Train, load, predict
+│   ├── llm/
+│   │   └── reasoner.py            # Claude API explanation
+│   ├── agents/
+│   │   ├── orchestrator.py        # OrchestratorAgent
+│   │   └── retraining_agent.py    # RetrainingAgent
+│   └── monitoring/
+│       └── drift.py               # Drift detection
+├── configs/
+│   └── config.yaml
+└── docs/
+    ├── architecture.md
+    └── decisions.md
+```
+
+---
 
 ## Why This Matters
 
-Enterprises need architectures that connect data science systems with GenAI interfaces and automated operations. Without clear boundaries, teams risk mixing probabilistic predictions, generated reasoning, workflow automation, and deployment operations into a fragile application.
+| Without this pattern | With this pattern |
+|---|---|
+| ML model gives a score with no context | Score + plain-English reasoning in one call |
+| Drift monitored manually on a schedule | Agent detects drift and acts automatically |
+| ML ops and LLM apps maintained separately | One system, one loop, one place to extend |
 
-This project establishes a structured foundation for building AI systems that are powerful, explainable, governed, and operationally manageable.
+---
 
-## High-Level Architecture
+## Configuration
 
-```text
-Business Event
-    |
-    v
-Feature Pipeline -> ML Prediction Service -> Structured Risk Signal
-                                              |
-Knowledge Sources -> Retrieval Layer --------+
-                                              |
-                                              v
-                                   LLM Reasoning Layer
-                                              |
-                                              v
-                                  Agent Orchestration
-                       +----------------------+----------------------+
-                       v                                             v
-              Human Approval Workflow                      MLOps Automation
-                       |                                             |
-                       v                                             v
-              Decision Record                              Monitoring/Retraining
-```
+All tuneable values live in `configs/config.yaml`. To adapt this template to a new domain, only the config needs to change:
 
-## Key Components
+| Key | What it controls |
+|---|---|
+| `ml.model_path` | Where the trained model artifact is saved |
+| `ml.n_features` | Number of input features |
+| `llm.system_prompt` | The instruction sent to the LLM — make it domain-specific here |
+| `llm.label_names` | Human-readable names for each class (e.g. `"1": "churn"`) |
+| `llm.feature_names` | Names for each feature position (e.g. `["age", "spend"]`); leave `[]` to use `feature_0`, `feature_1`, ... |
+| `monitoring.drift_threshold` | Drift score above which retraining fires |
+| `agents.explain_confidence_threshold` | Confidence below which the LLM is called |
 
-- `src/core`: Contracts for ML predictions, LLM reasoning traces, agent tasks, approval events, and automation outcomes.
-- `src/pipelines`: Placeholder workflows for feature generation, training lifecycle, evaluation, monitoring, and agent-assisted MLOps actions.
-- `src/services`: Runtime service boundaries for prediction, retrieval, reasoning, orchestration, and approval management.
-- `configs`: Configuration placeholders for ML, LLM, agents, and human approval policies.
-- `docs`: Architecture notes and decision records.
-- `examples`: Conceptual traces for hybrid decisioning and automated operations.
+---
 
-## Folder Structure
+## Dependencies
 
-```text
-hybrid-ds-genai-agentic-mlops-system/
-├── README.md
-├── requirements.txt
-├── .gitignore
-├── src/
-│   ├── __init__.py
-│   ├── core/
-│   ├── pipelines/
-│   └── services/
-├── configs/
-│   └── config.yaml
-├── docs/
-│   ├── architecture.md
-│   └── decisions.md
-└── examples/
-```
-
-## Example Workflows
-
-### Hybrid Decisioning
-
-1. A business event triggers feature lookup and ML scoring.
-2. The ML model returns a structured prediction and confidence metadata.
-3. The retrieval layer gathers relevant policy, case, or customer context.
-4. The LLM produces an evidence-grounded explanation.
-5. An agent routes the case to approval, escalation, or automated action based on policy.
-
-### Agentic MLOps Automation
-
-1. Observability signals indicate drift or model quality degradation.
-2. An agent collects recent metrics, lineage, and evaluation reports.
-3. The agent prepares a retraining or rollback recommendation.
-4. Human approval is required before any production-impacting action.
-5. The control plane records the decision and resulting lifecycle event.
-
-## Design Decisions and Tradeoffs
-
-- Separate ML and LLM contracts: improves explainability, but requires integration discipline.
-- Agent-mediated automation: reduces manual operations, but must be constrained by approvals and policy.
-- Human approval gates: reduce operational risk, but may slow fully automated remediation.
-- Unified lifecycle traces: improve auditability, but require consistent event capture across systems.
-
-## Future Roadmap
-
-- Add hybrid decision record templates.
-- Add ML prediction and LLM reasoning trace schemas.
-- Add agent permission and approval policy examples.
-- Add conceptual integration with an MLOps control plane.
-- Add evaluation strategy for ML quality, LLM answer quality, and workflow quality.
+| Package | Purpose |
+|---|---|
+| `scikit-learn` | ML model training and prediction |
+| `numpy` | Feature arrays and drift computation |
+| `anthropic` | Claude API for LLM reasoning |
+| `pyyaml` | Config loading |
