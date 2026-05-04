@@ -117,3 +117,17 @@
 **Why:** The LLM explanation is most valuable when the model is uncertain — a 60% prediction benefits from a plain-English explanation. A 97% prediction is self-evident. Calling the LLM on every request adds latency and cost without adding information in the confident case. The threshold is configurable so teams can tune the tradeoff for their domain.
 
 **Tradeoff:** High-confidence predictions get no explanation even when one might occasionally be useful (e.g., for audit trails). Teams with strict explainability requirements should set `explain_result=True` explicitly or lower the threshold to `0.0` to always call the LLM.
+
+---
+
+## ADR-013: FastAPI for HTTP layer; model loaded once at startup; no auth in template
+
+**Decision:** `src/services/api.py` uses FastAPI with a `lifespan` async context manager to load the ML model once at startup and store it in `app.state`. The API has no authentication. The `/drift-check` endpoint is monitoring-only (`warn_only=True`) — it never triggers retraining.
+
+**Why (FastAPI):** Async-native, Pydantic integration for request/response validation, automatic OpenAPI docs at `/docs`. The `lifespan` hook is the correct FastAPI pattern for one-time startup work — loading the model in the endpoint handler would reload it on every request.
+
+**Why (no auth in template):** Authentication is environment-specific. Different teams use API keys, OAuth, mTLS, or VPN-level trust depending on their infrastructure. Adding a specific auth mechanism would either be wrong for most teams or require parameterisation that obscures the core pattern. The correct extension point is FastAPI middleware in `api.py`.
+
+**Why (drift-check is monitoring-only):** Triggering model retraining from an HTTP request requires a durable background job queue (Celery, Prefect, etc.) to handle the latency, retries, and failure modes of a training run. That dependency is too infrastructure-specific for a template. The pattern to extend: add a `BackgroundTasks` parameter in FastAPI and call `retrain_fn` asynchronously.
+
+**Tradeoff:** The API is not production-ready as-is — it needs auth and a proper background task system before deployment.

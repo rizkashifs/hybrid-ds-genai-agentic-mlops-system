@@ -2,19 +2,21 @@
 
 ## Overview
 
-The system has three layers that run in sequence for every request:
-
 ```
-Input (feature vector)
+HTTP Client
+     ↓
+FastAPI  (src/services/api.py)       ← HTTP boundary
+     ↓
+  OrchestratorAgent                  ← agent layer
+   ├── ML Model                       ← prediction layer
+   └── LLM Reasoner (conditional)     ← reasoning layer
         ↓
-  OrchestratorAgent          ← agent layer
-   ├── ML Model               ← prediction layer
-   └── LLM Reasoner           ← reasoning layer
+  Combined result  {prediction, routing, explanation?}
         ↓
-  Combined result
-        ↓
-  RetrainingAgent             ← MLOps automation layer
+  RetrainingAgent                    ← MLOps automation layer
    └── DriftDetector
+        ↓
+  Monitoring / feedback loop
 ```
 
 ---
@@ -161,6 +163,30 @@ Logs are designed to ship directly to any JSON-capable sink: Datadog, CloudWatch
 
 ---
 
+## HTTP Layer (`src/services/api.py`)
+
+- Framework: FastAPI
+- Model loaded once at startup via a `lifespan` async context manager — not per-request
+- Falls back to `train()` automatically if no model artifact exists at startup
+- Three endpoints with Pydantic request/response models:
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/health` | GET | Liveness check — `{status, model_loaded}` |
+| `/predict` | POST | Run OrchestratorAgent — `{prediction, routing, explanation?}` |
+| `/drift-check` | POST | Run drift detection only (no retraining) — `{drift_score, drifted, action}` |
+
+- `/predict` accepts `force_explain: bool | null` to override routing (maps to `explain_result`)
+- `/drift-check` uses `warn_only=True` — reports drift but never triggers retraining from the API
+- No authentication — add middleware before exposing outside a trusted network
+
+**Start:**
+```bash
+uvicorn src.services.api:app --reload
+```
+
+---
+
 ## Extension Points
 
 | What to extend | Where |
@@ -170,4 +196,6 @@ Logs are designed to ship directly to any JSON-capable sink: Datadog, CloudWatch
 | Add an evaluation agent | `src/agents/` — new class, same pattern |
 | Replace drift metric | `src/monitoring/drift.py` — swap the function body, signature stays the same |
 | Add a real retraining pipeline | Pass a real `retrain_fn` into `RetrainingAgent.check_and_act()` |
+| Wire retraining from the API | Add a background task in `api.py` that calls `retrain_fn` when drift is detected |
 | Ship logs to a sink | Redirect stderr or add a second handler in `src/core/__init__.py` |
+| Add authentication | Add FastAPI middleware in `api.py` before the route definitions |

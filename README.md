@@ -110,6 +110,47 @@ See `docs/architecture.md` for the full list of events and fields emitted by eac
 
 ---
 
+## Serving (HTTP API)
+
+```bash
+uvicorn src.services.api:app --reload
+```
+
+The model loads once at startup. Three endpoints are available:
+
+**`GET /health`**
+```bash
+curl http://localhost:8000/health
+# {"status": "ok", "model_loaded": true}
+```
+
+**`POST /predict`**
+```bash
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"features": [0.5, -1.2, 0.8, 1.1]}'
+# {"prediction": {...}, "routing": {"explain_called": false, "reason": "confidence 0.93 >= threshold 0.85"}, "explanation": null}
+
+# Force LLM regardless of confidence:
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"features": [0.5, -1.2, 0.8, 1.1], "force_explain": true}'
+```
+
+**`POST /drift-check`**
+```bash
+curl -X POST http://localhost:8000/drift-check \
+  -H "Content-Type: application/json" \
+  -d '{"baseline": [[0,0,0,0],[0,0,0,0]], "new_data": [[1,1,1,1],[1,1,1,1]]}'
+# {"drift_score": 1.0, "drifted": true, "action": null}
+```
+
+The drift-check endpoint is monitoring-only — it reports drift but does not trigger retraining. To trigger retraining from the API, wire `retrain_fn` in a background task.
+
+> **Note:** The API has no authentication. Add auth middleware before exposing it outside a trusted network.
+
+---
+
 ## Example Output
 
 ```
