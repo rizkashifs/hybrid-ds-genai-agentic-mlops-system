@@ -131,3 +131,17 @@
 **Why (drift-check is monitoring-only):** Triggering model retraining from an HTTP request requires a durable background job queue (Celery, Prefect, etc.) to handle the latency, retries, and failure modes of a training run. That dependency is too infrastructure-specific for a template. The pattern to extend: add a `BackgroundTasks` parameter in FastAPI and call `retrain_fn` asynchronously.
 
 **Tradeoff:** The API is not production-ready as-is — it needs auth and a proper background task system before deployment.
+
+---
+
+## ADR-014: GitHub Actions for CI; no deployment step in template
+
+**Decision:** `.github/workflows/ci.yml` defines two jobs — `lint` (ruff) and `test` (pytest) — that run on every push and pull request. No deployment, Docker build, or environment-specific step is included in the workflow.
+
+**Why (GitHub Actions):** Ubiquitous for GitHub-hosted repositories, zero infrastructure setup required, free for public repos. The YAML format is readable and well-documented.
+
+**Why (ruff over flake8/pylint):** Ruff is a drop-in replacement that runs ~100× faster, covers the same rules, and auto-fixes many issues. A single `pip install ruff` is enough — no separate flake8 plugins or config files needed.
+
+**Why (no deployment step):** Deployment is environment-specific. Teams will deploy to AWS, GCP, Azure, on-prem, or containers with different credentials, regions, and release strategies. A hardcoded deployment step would either be wrong for most teams or require so many variables it obscures the pattern. The correct approach: add a third job in `ci.yml` after `test` passes, specific to the team's platform.
+
+**Tradeoff:** Teams on GitLab CI, Jenkins, or CircleCI must port the two-job pattern to their own YAML syntax. The logic (`ruff check` + `pytest`) is identical — only the runner syntax differs.

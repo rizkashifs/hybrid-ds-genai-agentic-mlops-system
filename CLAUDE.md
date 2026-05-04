@@ -75,3 +75,5 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - Mock the LLM layer (`src.llm.reasoner.explain`) in any test that exercises the orchestrator
 - Use inline config dicts in tests — do not import `load_config()` unless testing config itself
 - No test should rely on the real `model.pkl` artifact; always pass a `tmp_path`-based cfg
+- Do not commit code that fails `ruff check src/ tests/` or `python3 -m pytest tests/ -v`
+- CI runs both checks automatically on every push and pull request

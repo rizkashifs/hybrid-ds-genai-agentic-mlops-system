@@ -1,5 +1,7 @@
 # Hybrid DS + GenAI + Agentic MLOps System
 
+[![CI](https://github.com/rizkashifs/hybrid-ds-genai-agentic-mlops-system/actions/workflows/ci.yml/badge.svg)](https://github.com/rizkashifs/hybrid-ds-genai-agentic-mlops-system/actions/workflows/ci.yml)
+
 A working demonstration of how ML, LLMs, and agents combine into a single unified system — not three separate tools.
 
 ---
@@ -80,6 +82,23 @@ python3 -m pytest tests/ -v
 | `tests/test_drift.py` | Zero drift, non-zero drift, known-value arithmetic |
 | `tests/test_retraining_agent.py` | No drift, drift + callback, drift + no callback raises, warn_only |
 | `tests/test_orchestrator.py` | explain on/off, prediction structure, LLM is mocked |
+
+---
+
+## CI
+
+Every push and pull request runs two jobs via GitHub Actions (`.github/workflows/ci.yml`):
+
+| Job | Command | What it checks |
+|---|---|---|
+| `lint` | `ruff check src/ tests/` | Style, unused imports, common errors |
+| `test` | `python3 -m pytest tests/ -v` | All 24 unit tests |
+
+To run the same checks locally before pushing:
+```bash
+ruff check src/ tests/
+python3 -m pytest tests/ -v
+```
 
 ---
 
