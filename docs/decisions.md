@@ -107,3 +107,13 @@
 **Decision:** `RetrainingAgent` only sets `action = "retraining_triggered"` when a `retrain_fn` is actually called. In `warn_only` mode with no callback, drift is detected but `action` remains `None`.
 
 **Why:** The `action` field communicates what the system *did*, not what it *could have done*. Returning `"retraining_triggered"` when nothing was triggered is misleading and could cause downstream consumers to incorrectly assume retraining ran. This was a bug caught by the test suite (Phase 3).
+
+---
+
+## ADR-012: LLM is only called when model confidence is below threshold
+
+**Decision:** `OrchestratorAgent.run()` applies a confidence-based routing decision by default. If `prediction["probability"] < agents.explain_confidence_threshold`, the LLM is called. Otherwise it is skipped. Callers can override with `explain_result=True` (force) or `explain_result=False` (skip). The result always includes a `routing` dict with `explain_called` and `reason`.
+
+**Why:** The LLM explanation is most valuable when the model is uncertain — a 60% prediction benefits from a plain-English explanation. A 97% prediction is self-evident. Calling the LLM on every request adds latency and cost without adding information in the confident case. The threshold is configurable so teams can tune the tradeoff for their domain.
+
+**Tradeoff:** High-confidence predictions get no explanation even when one might occasionally be useful (e.g., for audit trails). Teams with strict explainability requirements should set `explain_result=True` explicitly or lower the threshold to `0.0` to always call the LLM.

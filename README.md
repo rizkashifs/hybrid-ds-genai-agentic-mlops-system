@@ -12,10 +12,12 @@ Most teams build either an ML pipeline **or** an LLM app. This repo shows what i
 User / System Trigger
         ↓
   OrchestratorAgent
-   ├── ML Model  →  prediction + confidence score
-   └── LLM       →  plain-English explanation of why
+   ├── ML Model       →  prediction + confidence score
+   └── LLM (conditional)
+        ├── confidence < threshold  →  call LLM  (uncertain, explain)
+        └── confidence ≥ threshold  →  skip LLM  (confident, no cost)
         ↓
-  Combined Output
+  Combined Output  {prediction, routing, explanation?}
         ↓
   RetrainingAgent  →  monitors drift → triggers retraining automatically
 ```

@@ -56,24 +56,41 @@ Input (feature vector)
 ### Agent Layer (`src/agents/`)
 
 **OrchestratorAgent**
-- Receives a raw feature vector
-- Calls `predict()` from the ML layer
-- Calls `explain()` from the LLM layer (controllable via `explain_result` flag)
-- Returns both as a single combined dict
-- Logs wall-clock duration for the full run
+
+Routing decision tree:
+
+```
+run(features, explain_result=None)
+        ↓
+  ML predict()  →  {label, probability}
+        ↓
+  explain_result is False?  →  skip LLM  (caller override)
+  explain_result is True?   →  call LLM  (caller override)
+  explain_result is None?   →  confidence < threshold?
+                                   yes  →  call LLM  (uncertain, explanation adds value)
+                                   no   →  skip LLM  (confident, explanation adds little)
+        ↓
+  return {prediction, routing, explanation?}
+```
+
+- `routing` key is always present: `{"explain_called": bool, "reason": str}`
+- `explanation` key is only present when the LLM was called
+- Threshold configured via `agents.explain_confidence_threshold` in `config.yaml`
+- Logs wall-clock duration and routing decision on every run
 
 **Log events emitted:**
 
 | Event | Fields |
 |---|---|
 | `agent.orchestrator.run.start` | `n_features` |
-| `agent.orchestrator.run.done` | `duration_ms`, `explain_called` |
+| `agent.orchestrator.run.done` | `duration_ms`, `explain_called`, `reason` |
 
 **RetrainingAgent**
 - Accepts baseline data and new incoming data
 - Calls `detect_drift()` to compute a drift score
 - If score exceeds `monitoring.drift_threshold` (from config), raises `RuntimeError` unless `warn_only=True`
 - Fires the injected `retrain_fn` callback — retraining logic stays outside the agent
+- `action="retraining_triggered"` only when the callback actually ran
 
 **Log events emitted:**
 
@@ -135,11 +152,12 @@ Logs are designed to ship directly to any JSON-capable sink: Datadog, CloudWatch
 1. Caller passes a feature vector to `OrchestratorAgent.run()`
 2. Agent logs `agent.orchestrator.run.start`
 3. Agent calls `predict(model, features)` → gets `{label, probability}`, logs `model.predicted`
-4. Agent calls `explain(prediction, cfg)` → gets explanation string from Claude (or mock), logs `llm.explain.done`
-5. Agent returns `{prediction, explanation}` to the caller, logs `agent.orchestrator.run.done` with duration
-6. Separately, `RetrainingAgent.check_and_act()` receives baseline vs. new data
-7. `detect_drift()` computes the score, logs `monitoring.drift.computed`
-8. Agent logs `agent.retraining.check`, and if drifted, fires `retrain_fn` and logs `agent.retraining.triggered`
+4. Agent evaluates the routing decision: compare `probability` to `explain_confidence_threshold`
+5. If LLM is called: `explain(prediction, cfg)` → explanation string, logs `llm.explain.done`
+6. Agent returns `{prediction, routing, explanation?}`, logs `agent.orchestrator.run.done` with duration and reason
+7. Separately, `RetrainingAgent.check_and_act()` receives baseline vs. new data
+8. `detect_drift()` computes the score, logs `monitoring.drift.computed`
+9. Agent logs `agent.retraining.check`, and if drifted and callback provided, fires `retrain_fn` and logs `agent.retraining.triggered`
 
 ---
 
