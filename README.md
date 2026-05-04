@@ -26,6 +26,15 @@ User / System Trigger
 
 ---
 
+## Design Principles
+
+- Standardization over ad-hoc pipelines
+- Observability as a first-class concern
+- Reproducibility over experimentation speed
+- Clear separation of concerns across lifecycle stages
+
+---
+
 ## Layers
 
 ### 1. ML Layer — `src/ml/model.py`
@@ -366,3 +375,18 @@ All tuneable values live in `configs/config.yaml`. To adapt this template to a n
 | `numpy` | Feature arrays and drift computation |
 | `anthropic` | Claude API for LLM reasoning |
 | `pyyaml` | Config loading |
+
+---
+
+## Part of AI Platform
+
+This repository is part of a modular AI platform:
+
+- [ds-mlops-enterprise-system](https://github.com/rizkashifs/ds-mlops-enterprise-system) → defines standards and best practices
+- [mlops-control-plane](https://github.com/rizkashifs/mlops-control-plane) → manages model lifecycle and governance
+- [enterprise-rag-agent-system](https://github.com/rizkashifs/enterprise-rag-agent-system) → GenAI application layer
+- [hybrid-ds-genai-agentic-mlops-system](https://github.com/rizkashifs/hybrid-ds-genai-agentic-mlops-system) → ML + LLM + agentic workflows
+- [ai-observability-and-drift-platform](https://github.com/rizkashifs/ai-observability-and-drift-platform) → monitoring and reliability
+- [multi-model-routing-engine](https://github.com/rizkashifs/multi-model-routing-engine) → model selection and optimization
+
+These repositories together represent an enterprise-grade AI system.
