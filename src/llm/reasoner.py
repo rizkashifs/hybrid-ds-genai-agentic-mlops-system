@@ -1,5 +1,7 @@
 import os
-from src.core import load_config
+from src.core import load_config, get_logger
+
+log = get_logger(__name__)
 
 
 def _format_features(features: list, feature_names: list) -> str:
@@ -21,6 +23,7 @@ def explain(prediction: dict, cfg: dict = None) -> str:
 
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
+        log.info("llm.explain.mock", extra={"label": label_name})
         return (
             f"[Mock LLM] Predicted '{label_name}' with {prediction['probability']:.0%} confidence. "
             f"Set ANTHROPIC_API_KEY to get a real explanation from Claude."
@@ -28,6 +31,7 @@ def explain(prediction: dict, cfg: dict = None) -> str:
 
     import anthropic
 
+    log.info("llm.explain.start", extra={"model": lcfg["model"], "label": label_name})
     client = anthropic.Anthropic(api_key=api_key)
     response = client.messages.create(
         model=lcfg["model"],
@@ -41,4 +45,8 @@ def explain(prediction: dict, cfg: dict = None) -> str:
             ),
         }],
     )
+    log.info("llm.explain.done", extra={
+        "input_tokens": response.usage.input_tokens,
+        "output_tokens": response.usage.output_tokens,
+    })
     return response.content[0].text

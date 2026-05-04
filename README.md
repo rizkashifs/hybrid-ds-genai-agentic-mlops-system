@@ -63,6 +63,33 @@ Without an API key the system still runs — the LLM step returns a clearly labe
 
 ---
 
+## Logging
+
+Every layer emits structured JSON logs to **stderr**. The demo `print()` output goes to **stdout**, so they never mix.
+
+```bash
+# View logs alongside demo output
+python main.py
+
+# Logs only, formatted
+python main.py 2>&1 1>/dev/null | jq .
+
+# Filter to a specific event
+python main.py 2>&1 1>/dev/null | jq 'select(.event == "agent.retraining.check")'
+
+# Raise or lower verbosity
+LOG_LEVEL=DEBUG python main.py
+```
+
+Sample log line:
+```json
+{"ts": "2026-05-04T16:37:53.952557+00:00", "level": "INFO", "logger": "src.agents.retraining_agent", "event": "agent.retraining.check", "drift_score": 0.6208, "threshold": 0.1, "drifted": true}
+```
+
+See `docs/architecture.md` for the full list of events and fields emitted by each layer.
+
+---
+
 ## Example Output
 
 ```

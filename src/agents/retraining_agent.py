@@ -1,4 +1,7 @@
 from src.monitoring.drift import detect_drift
+from src.core import get_logger
+
+log = get_logger(__name__)
 
 
 class RetrainingAgent:
@@ -11,8 +14,14 @@ class RetrainingAgent:
     def check_and_act(self, baseline_data: list, new_data: list, retrain_fn=None) -> dict:
         drift_score = detect_drift(baseline_data, new_data)
         drifted = drift_score > self.drift_threshold
-        action = None
 
+        log.info("agent.retraining.check", extra={
+            "drift_score": round(drift_score, 4),
+            "threshold": self.drift_threshold,
+            "drifted": drifted,
+        })
+
+        action = None
         if drifted:
             if retrain_fn is None and not self.warn_only:
                 raise RuntimeError(
@@ -20,6 +29,7 @@ class RetrainingAgent:
                     f"but no retrain_fn was supplied. Pass a retrain_fn or set warn_only=True."
                 )
             action = "retraining_triggered"
+            log.info("agent.retraining.triggered", extra={"drift_score": round(drift_score, 4)})
             if retrain_fn:
                 retrain_fn()
 

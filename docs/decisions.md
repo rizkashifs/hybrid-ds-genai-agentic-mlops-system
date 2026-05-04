@@ -79,3 +79,13 @@
 **Why:** Silent failures in a retraining pipeline are dangerous. Drift is detected, nothing happens, and the model silently degrades. Making the failure loud forces the caller to make an explicit choice.
 
 **Tradeoff:** Callers who use `check_and_act` purely for monitoring must now pass `warn_only=True`. This is a small, explicit cost for a significant safety improvement.
+
+---
+
+## ADR-009: Structured JSON logs via stdlib, no third-party sink
+
+**Decision:** All layers log to stderr using Python's stdlib `logging` with a custom `_JSONFormatter` defined in `src/core/__init__.py`. No third-party logging library (structlog, loguru) or observability SDK is introduced.
+
+**Why:** A template must be portable. Tying it to a specific logging library or vendor SDK forces every team that uses it to adopt that dependency. Stdlib `logging` is available everywhere, and the JSON lines it produces can be piped into any sink — Datadog, CloudWatch, Loki, a local file — without changing application code.
+
+**Tradeoff:** No built-in log aggregation, sampling, or async flushing. For high-throughput production services, add a `QueueHandler` or replace with `structlog`. The formatter and `get_logger()` factory in `src/core/__init__.py` are the only two places that need to change.
