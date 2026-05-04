@@ -29,7 +29,7 @@ User / System Trigger
 ## Layers
 
 ### 1. ML Layer — `src/ml/model.py`
-A `LogisticRegression` model trained on your data. Returns a structured prediction:
+Any scikit-learn compatible model — the template ships with `LogisticRegression` as a working example. Swap it for `XGBClassifier`, `RandomForestRegressor`, or any model that exposes `predict` and `predict_proba`. Returns a structured prediction:
 ```python
 {"label": 1, "probability": 0.93, "features": [0.5, -1.2, 0.8, 1.1]}
 ```
