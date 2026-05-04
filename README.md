@@ -48,6 +48,38 @@ The monitoring logic lives in `src/monitoring/drift.py` — a simple mean-shift 
 
 ---
 
+## Agent Responsibilities
+
+### `OrchestratorAgent` — `src/agents/orchestrator.py`
+
+The entry point for every prediction request. It sequences the ML and LLM layers and applies routing logic so the LLM is only called when it adds value.
+
+| Step | What happens |
+|---|---|
+| 1. Receive features | Accepts a feature vector as a Python list |
+| 2. ML prediction | Calls `predict()` → returns `{label, probability, features}` |
+| 3. Routing decision | If `probability < explain_confidence_threshold`, flag for LLM; otherwise skip |
+| 4. LLM call (conditional) | Calls `explain()` with the prediction and config — only when flagged |
+| 5. Return result | Returns `{prediction, routing, explanation?}` — `routing` is always present |
+
+Callers can override routing with `explain_result=True` (always explain) or `explain_result=False` (never explain).
+
+### `RetrainingAgent` — `src/agents/retraining_agent.py`
+
+The MLOps automation layer. It monitors for data drift and triggers retraining when the incoming distribution has shifted enough to degrade model performance.
+
+| Step | What happens |
+|---|---|
+| 1. Receive data | Accepts `baseline_data` (training distribution) and `new_data` (recent production data) |
+| 2. Drift computation | Calls `detect_drift()` → mean absolute difference in per-feature means |
+| 3. Threshold check | Compares drift score to `monitoring.drift_threshold` from config |
+| 4. Act | If drifted: calls `retrain_fn()` if provided; raises `RuntimeError` if not (unless `warn_only=True`) |
+| 5. Return result | Returns `{drift_score, drifted, action}` — `action` is `"retraining_triggered"` or `None` |
+
+The `retrain_fn` is injected by the caller — in the demo it's a simple `train()` call; in production it can be a pipeline trigger, Airflow DAG kick, or any callable.
+
+---
+
 ## Quickstart
 
 ```bash
@@ -192,6 +224,64 @@ Label names (`positive`/`negative`) and feature names are set in `config.yaml`.
 
 ---
 
+## Example Workflow
+
+Two execution paths depending on model confidence. Both go through `OrchestratorAgent`.
+
+**Path A: High-confidence prediction (LLM skipped)**
+
+```
+features = [0.5, -1.2, 0.8, 1.1]
+         ↓
+OrchestratorAgent.run(features)
+         ↓
+ML prediction: label=1, probability=0.93
+         ↓
+Routing: 0.93 >= threshold 0.85  →  skip LLM
+         ↓
+Result: {
+  "prediction":  {"label": 1, "probability": 0.93, "features": [...]},
+  "routing":     {"explain_called": false, "reason": "confidence 0.93 >= threshold 0.85"},
+  "explanation": null
+}
+```
+
+**Path B: Low-confidence prediction (LLM called)**
+
+```
+features = [0.1, 0.0, -0.1, 0.2]
+         ↓
+OrchestratorAgent.run(features)
+         ↓
+ML prediction: label=1, probability=0.61
+         ↓
+Routing: 0.61 < threshold 0.85  →  call LLM
+         ↓
+LLM: Claude explains the prediction in 2 sentences
+         ↓
+Result: {
+  "prediction":  {"label": 1, "probability": 0.61, "features": [...]},
+  "routing":     {"explain_called": true, "reason": "confidence 0.61 < threshold 0.85"},
+  "explanation": "The model predicted positive with moderate confidence ..."
+}
+```
+
+**Background: Drift detection + retraining**
+
+```
+RetrainingAgent.check_and_act(baseline_data, new_data, retrain_fn=train)
+         ↓
+drift_score = mean |baseline_feature_means − new_feature_means| = 0.62
+         ↓
+0.62 > threshold 0.10  →  drifted
+         ↓
+retrain_fn() called  →  model retrained on new distribution
+         ↓
+Result: {"drift_score": 0.62, "drifted": true, "action": "retraining_triggered"}
+```
+
+---
+
 ## Project Structure
 
 ```
@@ -217,13 +307,38 @@ hybrid-ds-genai-agentic-mlops-system/
 
 ---
 
-## Why This Matters
+## Why a Hybrid System
 
-| Without this pattern | With this pattern |
-|---|---|
-| ML model gives a score with no context | Score + plain-English reasoning in one call |
-| Drift monitored manually on a schedule | Agent detects drift and acts automatically |
-| ML ops and LLM apps maintained separately | One system, one loop, one place to extend |
+### ML alone is not enough
+
+A model score with no explanation is a black box. A data scientist can interpret a 93% confidence prediction; a business stakeholder, compliance team, or end user cannot. Without reasoning, predictions are hard to audit, hard to trust, and hard to act on.
+
+Model performance also degrades silently. Without active monitoring, a model trained on last quarter's data quietly becomes stale — no alert fires, no retraining happens. Teams discover drift by noticing downstream metrics fall off weeks later.
+
+### LLM alone is not enough
+
+An LLM reasoning from scratch on structured data is expensive, slow, and unreliable. It has no grounded prediction to reason from, and calling it on every request is unnecessary cost — a 97% confident prediction needs no explanation.
+
+### Together, they cover each other's weaknesses
+
+| Challenge | ML alone | LLM alone | Hybrid (this system) |
+|---|---|---|---|
+| Structured prediction | ✓ Fast, accurate | ✗ Unreliable on tabular data | ✓ ML handles prediction |
+| Plain-English reasoning | ✗ None | ✓ Natural language | ✓ LLM called when it adds value |
+| Cost control | ✓ Cheap at scale | ✗ Expensive at scale | ✓ LLM skipped on confident calls |
+| Drift detection | ✗ Manual | ✗ None | ✓ Agent monitors automatically |
+| Retraining | ✗ Manual trigger | ✗ None | ✓ Agent fires callback on drift |
+
+### Concrete use cases
+
+The same system adapts to any classification or regression problem by changing `config.yaml`:
+
+- **Fraud detection** — Model flags a transaction; LLM explains which features drove suspicion; retraining agent picks up distribution shift as fraud patterns evolve.
+- **Customer churn** — Model scores churn risk; LLM generates a retention message; drift agent triggers retraining when seasonal patterns shift.
+- **Credit risk** — Model outputs a risk score; LLM produces an audit-ready explanation; monitoring ensures the model stays calibrated as economic conditions change.
+- **Medical triage** — Model ranks case priority; LLM explains clinical reasoning; retraining fires when patient population demographics shift.
+
+The code changes in none of these cases. Only `config.yaml` changes.
 
 ---
 
